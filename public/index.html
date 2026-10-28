@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Sharing</title>
+    <link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+
+<body class="min-h-screen bg-slate-100 text-slate-800 antialiased"
+      x-data="fileManager()"
+      x-init="loadFiles()">
+
+<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+
+    <header class="mb-6">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-slate-900">📁 File Sharing</h1>
+                <p class="text-sm text-slate-500">Kelola, upload, dan download file dengan mudah.</p>
+            </div>
+
+            <div x-show="selectedFiles.length" x-cloak
+                 class="rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700">
+                <span x-text="selectedFiles.length"></span> file dipilih
+            </div>
+        </div>
+    </header>
+
+    <div class="mb-4 flex flex-wrap gap-2">
+        <label class="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
+            <i class="bi bi-cloud-arrow-up"></i>
+            Upload
+            <input type="file" id="fileInput" multiple class="hidden" @change="uploadFiles($event)">
+        </label>
+
+        <button type="button"
+                class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                @click="createFolder()">
+            <i class="bi bi-folder-plus"></i>
+            Folder Baru
+        </button>
+
+        <button type="button"
+                class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                @click="loadFiles(currentPath)"
+                :disabled="loading">
+            <i class="bi bi-arrow-clockwise"></i>
+            Refresh
+        </button>
+
+        <button type="button"
+                class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                @click="downloadSelected()"
+                :disabled="!selectedFiles.length || loading">
+            <i class="bi bi-download"></i>
+            Download Terpilih
+        </button>
+
+        <button type="button"
+                class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                @click="downloadFolder()" :disabled="loading">
+            📦 Download Semua (ZIP)
+        </button>
+    </div>
+
+    <nav class="mb-4 flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
+        <button type="button"
+                class="font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                @click="loadFiles('')">
+            Home
+        </button>
+
+        <template x-for="(part, index) in pathParts" :key="index">
+            <span class="flex items-center gap-1">
+                <span class="text-slate-400">/</span>
+                <button type="button"
+                        class="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                        @click="loadFiles(pathParts.slice(0, index + 1).join('/'))"
+                        x-text="part">
+                </button>
+            </span>
+        </template>
+    </nav>
+
+    <div class="h-[40vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+
+        <div class="hidden grid-cols-[minmax(280px,1fr)_140px_190px_150px] border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500 md:grid">
+            <div class="px-4 py-3">Nama</div>
+            <div class="px-4 py-3">Ukuran</div>
+            <div class="px-4 py-3">Diubah</div>
+            <div class="px-4 py-3 text-right">Aksi</div>
+        </div>
+
+        <div x-show="loading" class="px-6 py-12 text-center text-sm text-slate-500">
+            Memuat...
+        </div>
+
+        <div x-show="!loading && items.length === 0" class="px-6 py-12 text-center text-sm text-slate-500">
+            Folder kosong
+        </div>
+
+        <template x-for="item in items" :key="item.type + ':' + item.name">
+            <div class="group border-b border-slate-100 last:border-b-0 hover:bg-slate-50">
+                <div class="grid gap-2 px-4 py-3 md:grid-cols-[minmax(280px,1fr)_140px_190px_150px] md:items-center">
+
+                    <!-- Checklist berada di sisi kanan nama file -->
+                    <div class="flex min-w-0 items-center gap-3">
+                        <template x-if="item.type === 'file'">
+                            <input type="checkbox"
+                                   class="order-first h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                   :checked="isSelected(item.name)"
+                                   @change="toggleSelected(item.name)"
+                                   title="Pilih file">
+                        </template>
+                        <button type="button"
+                                class="flex min-w-0 items-center gap-2 text-left"
+                                @click="openItem(item)">
+                            <span class="text-xl" x-text="getFileIcon(item.name, item.type)"></span>
+                            <span class="truncate font-medium text-slate-800 group-hover:text-blue-700"
+                                  x-text="item.name"></span>
+                        </button>
+
+                        
+                    </div>
+
+                    <div class="text-sm text-slate-500">
+                        <span class="md:hidden font-medium text-slate-400">Ukuran: </span>
+                        <span x-text="item.type === 'folder' ? '-' : formatBytes(item.size)"></span>
+                    </div>
+
+                    <div class="text-sm text-slate-500">
+                        <span class="md:hidden font-medium text-slate-400">Diubah: </span>
+                        <span x-text="formatDate(item.modified)"></span>
+                    </div>
+
+                    <div class="flex justify-start gap-2 md:justify-end">
+                        <button type="button"
+                                x-show="item.type === 'file'"
+                                class="rounded-md bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-blue-100 hover:text-blue-700"
+                                @click="downloadFile(item.name)"
+                                title="Download">
+                            ⬇
+                        </button>
+
+                        <button type="button"
+                                x-show="item.type === 'folder'"
+                                class="rounded-md bg-indigo-50 px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100"
+                                @click="downloadFolder(item.name)"
+                                title="Download folder sebagai ZIP">
+                            📦
+                        </button>
+
+                        <button type="button"
+                                class="rounded-md bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-600 hover:bg-red-100"
+                                @click="deleteItem(item.name)"
+                                title="Hapus">
+                            🗑
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <div x-show="selectedFiles.length" x-cloak
+         class="mt-4 flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div class="text-sm text-blue-800">
+            <strong x-text="selectedFiles.length"></strong> file siap di-download dalam satu ZIP.
+        </div>
+
+        <div class="flex gap-2">
+            <button type="button"
+                    class="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                    @click="clearSelection()">
+                Batalkan pilihan
+            </button>
+
+            <button type="button"
+                    class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                    @click="downloadSelected()">
+                ⬇ Download ZIP
+            </button>
+        </div>
+    </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
